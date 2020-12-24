@@ -71,6 +71,8 @@ FACE_PARTS = {"cheek": [0, 17],
 #FACE_BOUNDARY = list(range(0, 16)) + [78, 76, 77] + list(range(69, 76)) + [79]
 FACE_BOUNDARY = list(range(0, 16)) + [78, 74, 79, 73, 72, 80, 71, 70, 69, 68, 76, 75, 77]
 
+ROI = []
+
 def mark_boundaries(rects, gray, frame):
     global currentframe, color, thickness, font, fontscale, fontcolor, BREAK_POINTS, CLOSURE
     point = 0
@@ -302,16 +304,16 @@ while True:
 
     # detect faces in the grayscale frame
     rects = detector(gray, 0)
-    #mark_boundaries(rects, gray, frame)
-    mark_face_boundaries(rects, gray, frame)
-    #mark_right_cheeks(rects, gray, frame)
-    #mark_left_cheeks(rects, gray, frame)
-    #mark_forehead(rects, gray, frame)
- 
+    # mark_boundaries(rects, gray, frame)
+    # mark_face_boundaries(rects, gray, frame)
+    mark_right_cheeks(rects, gray, frame)
+    mark_left_cheeks(rects, gray, frame)
+    mark_forehead(rects, gray, frame)
+
     # show the frame
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
- 
+
 	# if the `q` key was pressed, break from the loop
     if key == ord("q"):
         break
