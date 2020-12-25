@@ -72,9 +72,15 @@ FACE_PARTS = {"cheek": [0, 17],
 #FACE_BOUNDARY = list(range(0, 16)) + [78, 76, 77] + list(range(69, 76)) + [79]
 FACE_BOUNDARY = list(range(0, 16)) + [78, 74, 79, 73, 72, 80, 71, 70, 69, 68, 76, 75, 77]
 
-ROI = []
+ROI = {
+       "lface_roi" : [48, 31, 27, 39, 40, 41, 36],
+	   "rface_roi" : [54, 35, 27, 42, 47, 45, 46]
+}
 
-def mark_landmarks(rects, gray, frame):
+
+results = list()
+
+def mark_roi(rects, gray, frame):
     global currentframe, color, thickness, font, fontscale, fontcolor, BREAK_POINTS, CLOSURE
     point = 0
 	# loop over the face detections
@@ -84,12 +90,44 @@ def mark_landmarks(rects, gray, frame):
 		# array
         shape = predictor(gray, rect)
         shape = face_utils.shape_to_np(shape)
-		# loop over the (x, y)-coordinates for the facial landmarks
-		# and draw them on the image
-        for (x, y) in shape:
-            cv2.putText(frame, str(point), (x-1, y-1), font, fontscale, fontcolor)
-            point += 1
-            
+        
+        # slight adjustment to the shape lip corner coordinates
+        shape[31][0] -= 20  
+        shape[35][0] += 20
+        
+        shape[48][0] -= 40  
+        shape[54][0] += 40
+        
+        
+        name = './data/frame' + str(currentframe) + '.jpg'
+        
+        # get the forehead coords
+        
+        xbl = shape[19][0]
+        ybl = shape[19][1] - 10
+        
+        xbr = shape[24][0]
+        ybr = shape[24][1] - 10
+        
+        xul = xbl
+        yul = ybl - 50
+        
+        xur = xbr
+        yur = yul
+
+        y1, x1 = polygon(np.array([ybl, ybr, yur, yul]), np.array([xbl, xbr, xur, xul]))
+        y2, x2 = polygon(shape[ROI["lface_roi"]][:, 1], shape[ROI["lface_roi"]][:, 0])
+        y3, x3 = polygon(shape[ROI["rface_roi"]][:, 1], shape[ROI["rface_roi"]][:, 0])
+        
+        #print(points.shape)
+        # # crop_face_part(shape[ROI["lface_roi"]], frame, name=name)
+        crop_and_save((np.r_[y1, y2, y3], 
+                       np.r_[x1, x2, x3]), frame, name=name)
+		# # increasing counter so that it will 
+        # show how many frames are created 
+        currentframe += 1
+
+
 def mark_boundaries(rects, gray, frame):
     global currentframe, color, thickness, font, fontscale, fontcolor, BREAK_POINTS, CLOSURE
     point = 0
@@ -302,23 +340,42 @@ def mark_forehead(rects, gray, frame):
         cv2.polylines(frame, [boundary], 
                       isClosed=True, color=(255,224,243), thickness=1) 
         
-        if currentframe > 100 and currentframe % 10 == 0:
-        # if currentframe > 0:
+        #if currentframe > 100 and currentframe % 10 == 0:
+        if currentframe > 0:
             name = './data/frame' + str(currentframe) + '.jpg'
-            cv2.imwrite (name, frame)      			
-            # crop_face_part(boundary, frame, name=name)
+            #cv2.imwrite (name, frame)      			
+            get_face_patch(boundary, frame, name=name)
 			# increasing counter so that it will 
             # show how many frames are created 
         currentframe += 1
 
-def crop_face_part(vertices, image, savedir=None, prefix=None, pCounter=0, name=None):
+def crop_and_save(points, image, savedir=None, prefix=None, pCounter=0, name=None):
+    global results
+    Y, X = points
+    cropped_img = np.zeros(image.shape, dtype=np.uint8)
+    cropped_img[points] = image[points]
+    results.append(np.sum(image[points]) / points[1].shape)
+    if name == None:
+       name = savedir + prefix + str(pCounter) + '.jpg'
+    cv2.imwrite(name, cropped_img)
+
+def get_face_patch(vertices,image, savedir=None, prefix=None, pCounter=0, name=None):
     Y, X = polygon(vertices[:, 1], vertices[:, 0])
-    print(np.sum(image[Y, X])//Y.shape)
     cropped_img = np.zeros(image.shape, dtype=np.uint8)
     cropped_img[Y, X] = image[Y, X]
     if name == None:
        name = savedir + prefix + str(pCounter) + '.jpg'
     cv2.imwrite(name, cropped_img)
+
+
+# def crop_face_part(vertices, image, savedir=None, prefix=None, pCounter=0, name=None):
+#     Y, X = polygon(vertices[:, 1], vertices[:, 0])
+#     cropped_img = np.zeros(image.shape, dtype=np.uint8)
+#     cropped_img[Y, X] = image[Y, X]
+#     if name == None:
+#        name = savedir + prefix + str(pCounter) + '.jpg'
+#     cv2.imwrite(name, cropped_img)
+
 
 # loop over the frames from the video stream
 while True:
@@ -337,7 +394,7 @@ while True:
     # mark_right_cheeks(rects, gray, frame)
     # mark_left_cheeks(rects, gray, frame)
     # mark_forehead(rects, gray, frame)
-    mark_landmarks(rects, gray, frame)
+    mark_roi(rects, gray, frame)
     
     # show the frame
     cv2.imshow("Frame", frame)
@@ -346,6 +403,10 @@ while True:
 	# if the `q` key was pressed, break from the loop
     if key == ord("q"):
         break
+
+a_file = open("D:\\Abhash\\Python\\Python_Practice\\signals.txt", "w")
+np.savetxt(a_file, results)
+a_file.close()
 
 # do a bit of cleanup
 cv2.destroyAllWindows()
