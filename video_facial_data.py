@@ -14,12 +14,17 @@ import cv2
 import os
 import numpy as np
 from skimage.draw import polygon
+import json
+import matplotlib.pyplot as plt
+import time
 
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--shape-predictor", required=True, help="path to facial landmark predictor")
 ap.add_argument("-r", "--picamera", type=int, default=-1, help="whether or not the Raspberry Pi camera should be used")
+ap.add_argument("-d", "--delay", type=int, default=60, help="Time of video capture")
+ap.add_argument("-f", "--video-file", default=None, help="provide video file to analyze")
 args = vars(ap.parse_args())
 
 # initialize dlib's face detector (HOG-based) and then create
@@ -28,11 +33,6 @@ print("[INFO] loading facial landmark predictor...")
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(args["shape_predictor"])
 
-# initialize the video stream and allow the cammera sensor to warmup
-print("[INFO] camera sensor warming up...")
-vs = VideoStream(usePiCamera=args["picamera"] > 0, resolution=(320, 240)).start()
-#time.sleep(2.0)
-
 try:     
     # creating a folder named data 
     if not os.path.exists('data'): 
@@ -40,6 +40,7 @@ try:
 # if not created then raise error 
 except OSError: 
     print ('Error: Creating directory of data') 
+
 
 # frame 
 currentframe = 0
@@ -69,7 +70,7 @@ FACE_PARTS = {"cheek": [0, 17],
               "lips": [48, 67]  
               }
 
-#FACE_BOUNDARY = list(range(0, 16)) + [78, 76, 77] + list(range(69, 76)) + [79]
+# FACE_BOUNDARY = list(range(0, 16)) + [78, 76, 77] + list(range(69, 76)) + [79]
 FACE_BOUNDARY = list(range(0, 16)) + [78, 74, 79, 73, 72, 80, 71, 70, 69, 68, 76, 75, 77]
 
 ROI = {
@@ -77,8 +78,7 @@ ROI = {
 	   "rface_roi" : [54, 35, 27, 42, 47, 45, 46]
 }
 
-
-results = list()
+results = []
 
 def mark_roi(rects, gray, frame):
     global currentframe, color, thickness, font, fontscale, fontcolor, BREAK_POINTS, CLOSURE
@@ -126,7 +126,6 @@ def mark_roi(rects, gray, frame):
 		# # increasing counter so that it will 
         # show how many frames are created 
         currentframe += 1
-
 
 def mark_boundaries(rects, gray, frame):
     global currentframe, color, thickness, font, fontscale, fontcolor, BREAK_POINTS, CLOSURE
@@ -350,14 +349,14 @@ def mark_forehead(rects, gray, frame):
         currentframe += 1
 
 def crop_and_save(points, image, savedir=None, prefix=None, pCounter=0, name=None):
-    global results
+    global results, a_file
     Y, X = points
     cropped_img = np.zeros(image.shape, dtype=np.uint8)
     cropped_img[points] = image[points]
-    results.append(np.sum(image[points]) / points[1].shape)
+    results.append((np.sum(image[points]) // points[1].shape)[0])
     if name == None:
        name = savedir + prefix + str(pCounter) + '.jpg'
-    cv2.imwrite(name, cropped_img)
+    #cv2.imwrite(name, cropped_img)
 
 def get_face_patch(vertices,image, savedir=None, prefix=None, pCounter=0, name=None):
     Y, X = polygon(vertices[:, 1], vertices[:, 0])
@@ -365,7 +364,7 @@ def get_face_patch(vertices,image, savedir=None, prefix=None, pCounter=0, name=N
     cropped_img[Y, X] = image[Y, X]
     if name == None:
        name = savedir + prefix + str(pCounter) + '.jpg'
-    cv2.imwrite(name, cropped_img)
+    #cv2.imwrite(name, cropped_img)
 
 
 # def crop_face_part(vertices, image, savedir=None, prefix=None, pCounter=0, name=None):
@@ -377,37 +376,93 @@ def get_face_patch(vertices,image, savedir=None, prefix=None, pCounter=0, name=N
 #     cv2.imwrite(name, cropped_img)
 
 
+vs = None
 # loop over the frames from the video stream
-while True:
-    # grab the frame from the threaded video stream, resize it to
-    # have a maximum width of 400 pixels, and convert it to
-    # grayscale
-    frame = vs.read()
-    frame = imutils.resize(frame, width=1300)
-    frame = cv2.flip(frame, 3)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+def start_video_capture(args, detector):
+    global vs
+    # initialize the video stream and allow the cammera sensor to warmup
+    print("[INFO] camera sensor warming up...")
+    vs = VideoStream(usePiCamera=args["picamera"] > 0, resolution=(320, 240)).start()
+    # time.sleep(2.0)
 
-    # detect faces in the grayscale frame
-    rects = detector(gray, 0)
-    # mark_boundaries(rects, gray, frame)
-    # mark_face_boundaries(rects, gray, frame)
-    # mark_right_cheeks(rects, gray, frame)
-    # mark_left_cheeks(rects, gray, frame)
-    # mark_forehead(rects, gray, frame)
-    mark_roi(rects, gray, frame)
+    while True:
+        # grab the frame from the threaded video stream, resize it to
+        # have a maximum width of 400 pixels, and convert it to
+        # grayscale
+        frame = vs.read()
+        frame = imutils.resize(frame, width=1300)
+        frame = cv2.flip(frame, 3)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # detect faces in the grayscale frame
+        rects = detector(gray, 0)
+        # mark_boundaries(rects, gray, frame)
+        # mark_face_boundaries(rects, gray, frame)
+        # mark_right_cheeks(rects, gray, frame)
+        # mark_left_cheeks(rects, gray, frame)
+        # mark_forehead(rects, gray, frame)
+        mark_roi(rects, gray, frame)
+        
+        # show the frame
+        cv2.imshow("Frame", frame)
+        key = cv2.waitKey(1) & 0xFF
+
+        # if the `q` key was pressed, break from the loop
+        if key == ord("q"):
+            break
+        
+        span = time.time() - start
+        if span >= args["delay"]:
+            break
+
+def start_frame_capture(args, detector, mp4):
+    print("[INFO] analysing frames of video file ... %s" % mp4)
     
-    # show the frame
-    cv2.imshow("Frame", frame)
-    key = cv2.waitKey(1) & 0xFF
+    vidcap = cv2.VideoCapture(mp4)
+    success, frame = vidcap.read()
+    count = 0
 
-	# if the `q` key was pressed, break from the loop
-    if key == ord("q"):
-        break
+    while success:
+        # grab the frame from the threaded video stream, resize it to
+        # have a maximum width of 400 pixels, and convert it to
+        # grayscale
+        frame = imutils.resize(frame, width=1300)
+        frame = cv2.flip(frame, 3)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-a_file = open("D:\\Abhash\\Python\\Python_Practice\\signals.txt", "w")
-np.savetxt(a_file, results)
-a_file.close()
+        # detect faces in the grayscale frame
+        rects = detector(gray, 0)
+        # mark_boundaries(rects, gray, frame)
+        # mark_face_boundaries(rects, gray, frame)
+        # mark_right_cheeks(rects, gray, frame)
+        # mark_left_cheeks(rects, gray, frame)
+        # mark_forehead(rects, gray, frame)
+        mark_roi(rects, gray, frame)
+        
+        # show the frame
+        cv2.imshow("Frame", frame)
+        key = cv2.waitKey(1) & 0xFF
+        
+        success, frame = vidcap.read()
+
+        
+if args["video_file"] == None:
+    start = time.time()
+    print('Capture starts at: %s' % start)
+    start_video_capture(args, detector)
+    print('Capture ends at: %s' % time.time())
+else:
+    print("video file provided")
+    start_frame_capture(args, detector, args["video_file"])
+
 
 # do a bit of cleanup
 cv2.destroyAllWindows()
 vs.stop()
+
+plt.plot(range(len(results)), results, 'b')
+plt.show()
+
+a_file = open("D:\\Abhash\\Python\\Python_Practice\\signals.txt", "w")
+print(results, file=a_file)
+a_file.close()
